@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RT 07 Aplikasi Gank</string>
+
+    <string name="menu_reload">Muat ulang</string>
+    <string name="menu_server">Alamat server</string>
+    <string name="menu_about">Tentang</string>
+
+    <string name="server_dialog_title">Alamat server KAS RT</string>
+    <string name="server_dialog_message">Jalankan server KAS RT di komputer, lalu masukkan alamat jaringan yang tampil di terminal (contoh: http://192.168.1.7:3000).\n\nPastikan HP dan komputer terhubung ke Wi-Fi yang sama.</string>
+    <string name="server_hint">http://192.168.1.7:3000</string>
+    <string name="server_invalid">Alamat tidak valid. Contoh: http://192.168.1.7:3000</string>
+
+    <string name="save">Simpan</string>
+    <string name="cancel">Batal</string>
+    <string name="exit">Keluar</string>
+
+    <string name="error_title">Tidak dapat terhubung ke server</string>
+    <string name="error_generic">Koneksi gagal.</string>
+    <string name="error_message">Alamat: %1$s\n\n%2$s\n\nPastikan server KAS RT sedang berjalan dan HP terhubung ke Wi-Fi yang sama.</string>
+    <string name="retry">Coba lagi</string>
+    <string name="change_server">Ganti alamat server</string>
+
+    <string name="download_started">Mengunduh %1$s…</string>
+    <string name="download_failed">Gagal memulai unduhan.</string>
+    <string name="download_description">Unduhan dari KAS RT</string>
+    <string name="download_permission_denied">Izin penyimpanan diperlukan untuk mengunduh file.</string>
+
+    <string name="print_failed">Layanan cetak tidak tersedia.</string>
+
+    <string name="no_app">Tidak ada aplikasi untuk membuka tautan ini.</string>
+
+    <string name="about_title">Tentang</string>
+    <string name="about_message">RT 07 Aplikasi Gank\nVersi %1$s\n\nServer: %2$s\n\nAplikasi Android ini menampilkan aplikasi yang berjalan di server jaringan lokal. Data tersimpan di server sehingga tetap sama di semua perangkat.</string>
+</resources>

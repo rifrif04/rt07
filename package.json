@@ -1,0 +1,19 @@
+{
+  "name": "kas-rt",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Aplikasi web KAS RT: pemasukan, pengeluaran, dan aset RT",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "reset-password": "node scripts/reset-password.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "server.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

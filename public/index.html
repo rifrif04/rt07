@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="description" content="Aplikasi pencatatan kas RT: pemasukan, pengeluaran, dan aset.">
+  <title>RT 07 Aplikasi Gank</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="splash" class="splash" role="status" aria-live="polite">
+    <div class="spinner" aria-hidden="true"></div>
+    <p>Memuat aplikasi…</p>
+  </div>
+
+  <section id="login-view" class="login-view hidden" aria-labelledby="login-title">
+    <div class="login-panel">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">RT</span>
+        <div>
+          <h1 id="login-title">RT 07 Aplikasi Gank</h1>
+          <p>Catatan keuangan &amp; aset warga</p>
+        </div>
+      </div>
+
+      <form id="login-form" class="login-form">
+        <h2>Masuk</h2>
+        <p class="muted">Silakan masuk untuk mengelola kas dan aset RT.</p>
+
+        <label class="field">
+          <span>Username</span>
+          <input id="login-username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+        </label>
+
+        <label class="field">
+          <span>Password</span>
+          <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+        </label>
+
+        <p id="login-error" class="form-error" role="alert"></p>
+
+        <button id="login-submit" class="btn btn-primary btn-block" type="submit">Masuk</button>
+      </form>
+
+      <p class="login-foot">Data tersimpan di server RT dan dapat diakses dari beberapa perangkat.</p>
+    </div>
+  </section>
+
+  <div id="app" class="app hidden">
+    <header class="topbar">
+      <a class="brand brand-sm" href="#/dashboard" aria-label="Ke dashboard">
+        <span class="logo" aria-hidden="true">RT</span>
+        <div>
+          <strong id="brand-title">RT 07 Aplikasi Gank</strong>
+          <small>Keuangan &amp; aset warga</small>
+        </div>
+      </a>
+      <div class="topbar-right">
+        <div class="user-chip">
+          <span id="top-user-name">Pengguna</span>
+          <small id="top-user-role">Bendahara</small>
+        </div>
+        <button class="icon-btn" type="button" data-action="logout" aria-label="Keluar" title="Keluar">
+          <span data-icon="logout"></span>
+        </button>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <div class="sidebar-actions">
+          <button class="btn btn-primary btn-block" type="button" data-action="new-tx" data-type="income">
+            <span data-icon="plus"></span> <span>Pemasukan</span>
+          </button>
+          <button class="btn btn-danger-soft btn-block" type="button" data-action="new-tx" data-type="expense">
+            <span data-icon="plus"></span> <span>Pengeluaran</span>
+          </button>
+        </div>
+        <nav aria-label="Navigasi utama">
+          <a class="nav-link" href="#/dashboard" data-nav="dashboard">
+            <span data-icon="dashboard"></span><span>Dashboard</span>
+          </a>
+          <a class="nav-link" href="#/transactions" data-nav="transactions">
+            <span data-icon="transactions"></span><span>Transaksi</span>
+          </a>
+          <a class="nav-link" href="#/assets" data-nav="assets">
+            <span data-icon="assets"></span><span>Aset RT</span>
+          </a>
+          <a class="nav-link" href="#/report" data-nav="report">
+            <span data-icon="report"></span><span>Laporan</span>
+          </a>
+          <a class="nav-link" href="#/account" data-nav="account">
+            <span data-icon="account"></span><span>Akun</span>
+          </a>
+        </nav>
+      </div>
+      <div class="sidebar-foot">
+        <p>Data tersimpan di server ini.</p>
+      </div>
+    </aside>
+
+    <main id="main" class="main" tabindex="-1"></main>
+
+    <nav class="bottom-nav" aria-label="Navigasi bawah">
+      <a href="#/dashboard" data-nav="dashboard">
+        <span data-icon="dashboard"></span><span>Dashboard</span>
+      </a>
+      <a href="#/transactions" data-nav="transactions">
+        <span data-icon="transactions"></span><span>Transaksi</span>
+      </a>
+      <a href="#/assets" data-nav="assets">
+        <span data-icon="assets"></span><span>Aset</span>
+      </a>
+      <a href="#/report" data-nav="report">
+        <span data-icon="report"></span><span>Laporan</span>
+      </a>
+      <a href="#/account" data-nav="account">
+        <span data-icon="account"></span><span>Akun</span>
+      </a>
+    </nav>
+  </div>
+
+  <dialog id="tx-dialog" class="dialog dialog-draggable" aria-labelledby="tx-dialog-title">
+    <div class="dialog-head" title="Tekan dan geser untuk memindahkan posisi pop up">
+      <div class="drag-title-wrap">
+        <span class="drag-icon" aria-hidden="true">⋮⋮</span>
+        <h3 id="tx-dialog-title">Tambah Transaksi</h3>
+      </div>
+      <div class="head-btn-wrap">
+        <button type="button" class="icon-btn sm" data-action="reset-dialog-pos" title="Reset posisi ke tengah" aria-label="Reset posisi">
+          <span data-icon="refresh"></span>
+        </button>
+        <button type="button" class="icon-btn sm" data-close aria-label="Tutup" title="Tutup">
+          <span data-icon="close"></span>
+        </button>
+      </div>
+    </div>
+    <form id="tx-form" class="dialog-body">
+      <label class="field">
+        <span>Jenis</span>
+        <select id="tx-type" required>
+          <option value="income">Pemasukan</option>
+          <option value="expense">Pengeluaran</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Tanggal</span>
+        <input id="tx-date" type="date" required>
+      </label>
+      <label class="field">
+        <div class="field-head">
+          <span>Kategori / Pos</span>
+          <button type="button" class="btn-text" data-action="open-cat-manager">+ Kelola Pos</button>
+        </div>
+        <input id="tx-category" list="tx-categories" maxlength="50" placeholder="Pilih atau ketik sendiri (contoh: Pemasukan Karnaval)" required>
+        <datalist id="tx-categories"></datalist>
+        <small class="hint">Bisa pilih dari daftar atau ketik pos baru langsung.</small>
+      </label>
+      <label class="field">
+        <span>Nominal (Rp)</span>
+        <input id="tx-amount" type="number" min="1" step="1" inputmode="numeric" placeholder="50000" required>
+        <small class="hint">Tanpa titik atau koma. Contoh: 50000</small>
+      </label>
+      <label class="field">
+        <span>Keterangan <em class="muted">(opsional)</em></span>
+        <textarea id="tx-description" rows="2" maxlength="300" placeholder="Catatan tambahan"></textarea>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" data-close>Batal</button>
+        <button type="submit" class="btn btn-primary" id="tx-save">Simpan</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="asset-dialog" class="dialog" aria-labelledby="asset-dialog-title">
+    <div class="dialog-head">
+      <h3 id="asset-dialog-title">Tambah Aset</h3>
+      <button type="button" class="icon-btn" data-close aria-label="Tutup">
+        <span data-icon="close"></span>
+      </button>
+    </div>
+    <form id="asset-form" class="dialog-body">
+      <label class="field">
+        <span>Nama aset</span>
+        <input id="asset-name" maxlength="100" placeholder="Contoh: Kursi rapat" required>
+      </label>
+      <div class="field-row">
+        <label class="field">
+          <span>Kategori</span>
+          <select id="asset-category">
+            <option>Elektronik</option>
+            <option>Perabot</option>
+            <option>Kendaraan</option>
+            <option>Bangunan</option>
+            <option>Peralatan</option>
+            <option>Lainnya</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Jumlah</span>
+          <input id="asset-quantity" type="number" min="1" step="1" inputmode="numeric" value="1" required>
+        </label>
+      </div>
+      <div class="field-row">
+        <label class="field">
+          <span>Kondisi</span>
+          <select id="asset-condition">
+            <option value="baik">Baik</option>
+            <option value="rusak-ringan">Rusak ringan</option>
+            <option value="rusak-berat">Rusak berat</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Tanggal perolehan</span>
+          <input id="asset-acquired" type="date">
+        </label>
+      </div>
+      <label class="field">
+        <span>Nilai (Rp)</span>
+        <input id="asset-value" type="number" min="0" step="1" inputmode="numeric" placeholder="0">
+        <small class="hint">Nilai total barang ini. Kosongkan jika tidak diketahui.</small>
+      </label>
+      <label class="field">
+        <span>Lokasi <em class="muted">(opsional)</em></span>
+        <input id="asset-location" maxlength="100" placeholder="Contoh: Balai warga">
+      </label>
+      <label class="field">
+        <span>Catatan <em class="muted">(opsional)</em></span>
+        <textarea id="asset-note" rows="2" maxlength="500" placeholder="Kondisi, sumber perolehan, dll."></textarea>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" data-close>Batal</button>
+        <button type="submit" class="btn btn-primary" id="asset-save">Simpan</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="user-dialog" class="dialog" aria-labelledby="user-dialog-title">
+    <div class="dialog-head">
+      <h3 id="user-dialog-title">Tambah Pengguna</h3>
+      <button type="button" class="icon-btn" data-close aria-label="Tutup">
+        <span data-icon="close"></span>
+      </button>
+    </div>
+    <form id="user-form" class="dialog-body">
+      <label class="field">
+        <span>Nama lengkap</span>
+        <input id="user-name" maxlength="80" placeholder="Contoh: Budi Santoso" required>
+      </label>
+      <label class="field">
+        <span>Username</span>
+        <input id="user-username" maxlength="32" autocapitalize="none" spellcheck="false" placeholder="contoh: budi" required>
+        <small class="hint">Huruf, angka, titik, garis bawah, atau strip (3-32 karakter).</small>
+      </label>
+      <label class="field">
+        <span>Peran</span>
+        <select id="user-role">
+          <option value="bendahara">Bendahara</option>
+          <option value="admin">Admin</option>
+        </select>
+      </label>
+      <label class="field">
+        <span id="user-password-label">Password</span>
+        <input id="user-password" type="password" minlength="6" maxlength="128" autocomplete="new-password">
+        <small class="hint" id="user-password-hint">Minimal 6 karakter.</small>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" data-close>Batal</button>
+        <button type="submit" class="btn btn-primary" id="user-save">Simpan</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="category-dialog" class="dialog dialog-draggable" aria-labelledby="cat-dialog-title">
+    <div class="dialog-head" title="Tekan dan geser untuk memindahkan posisi pop up">
+      <div class="drag-title-wrap">
+        <span class="drag-icon" aria-hidden="true">⋮⋮</span>
+        <h3 id="cat-dialog-title">Pos Kegiatan &amp; Anggaran</h3>
+      </div>
+      <div class="head-btn-wrap">
+        <button type="button" class="icon-btn sm" data-action="reset-dialog-pos" title="Reset posisi ke tengah" aria-label="Reset posisi">
+          <span data-icon="refresh"></span>
+        </button>
+        <button type="button" class="icon-btn sm" data-close aria-label="Tutup" title="Tutup">
+          <span data-icon="close"></span>
+        </button>
+      </div>
+    </div>
+    <div class="dialog-body">
+      <p class="muted" style="font-size: 12.5px;">Kelola pos kegiatan warga. Setiap pos memiliki dashboard pemasukan, pengeluaran, dan saldo tersendiri.</p>
+      <form id="new-cat-form" class="pos-input-group">
+        <input id="new-cat-name" maxlength="50" placeholder="Ketik nama pos baru (misal: 17 Agustus)..." required>
+        <button type="submit" class="btn btn-primary btn-sm" id="new-cat-save">
+          <span data-icon="plus"></span><span>Tambah</span>
+        </button>
+      </form>
+      <div class="field" style="margin-top: 10px;">
+        <div class="field-head">
+          <span style="font-size: 12px; font-weight: 600; color: #475569;">Daftar Pos Aktif:</span>
+          <small class="muted" style="font-size: 11px;">Klik ikon pensil untuk ubah nama</small>
+        </div>
+        <div id="category-manager-list" class="cat-chip-list"></div>
+      </div>
+      <div class="dialog-actions" style="margin-top: 10px;">
+        <button type="button" class="btn btn-ghost btn-sm" data-close>Tutup</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

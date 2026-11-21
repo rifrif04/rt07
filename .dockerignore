@@ -1,0 +1,7 @@
+node_modules
+.git
+.idea
+android
+data
+.env
+opencode.json

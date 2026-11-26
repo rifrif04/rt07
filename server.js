@@ -5,11 +5,12 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { PUBLIC_DIR, PORT, HOST, RT_NAME, APP_NAME } from './src/config.js';
 import { loadDb, saveDb } from './src/store.js';
-import { ensureDefaultAdmin, getSessionUser } from './src/auth.js';
+import { ensureDefaultAdmin, ensureDefaultWarga, getSessionUser } from './src/auth.js';
 import { handleApi } from './src/api.js';
 
 const db = loadDb();
 ensureDefaultAdmin(db);
+ensureDefaultWarga(db);
 saveDb(db);
 
 const MIME_TYPES = {

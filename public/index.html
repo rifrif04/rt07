@@ -9,7 +9,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" type="image/png" href="/icons/icon-192.png">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
-  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/style.css?v=31">
 </head>
 <body>
   <div id="splash" class="splash" role="status" aria-live="polite">
@@ -71,33 +71,23 @@
     </header>
 
     <aside class="sidebar">
-      <div class="sidebar-top">
-        <div class="sidebar-actions">
-          <button class="btn btn-primary btn-block" type="button" data-action="new-tx" data-type="income">
-            <span data-icon="plus"></span> <span>Pemasukan</span>
-          </button>
-          <button class="btn btn-danger-soft btn-block" type="button" data-action="new-tx" data-type="expense">
-            <span data-icon="plus"></span> <span>Pengeluaran</span>
-          </button>
-        </div>
-        <nav aria-label="Navigasi utama">
-          <a class="nav-link" href="#/dashboard" data-nav="dashboard">
-            <span data-icon="dashboard"></span><span>Dashboard</span>
-          </a>
-          <a class="nav-link" href="#/transactions" data-nav="transactions">
-            <span data-icon="transactions"></span><span>Transaksi</span>
-          </a>
-          <a class="nav-link" href="#/assets" data-nav="assets">
-            <span data-icon="assets"></span><span>Aset RT</span>
-          </a>
-          <a class="nav-link" href="#/report" data-nav="report">
-            <span data-icon="report"></span><span>Laporan</span>
-          </a>
-          <a class="nav-link" href="#/account" data-nav="account">
-            <span data-icon="account"></span><span>Akun</span>
-          </a>
-        </nav>
-      </div>
+      <nav aria-label="Navigasi utama">
+        <a class="nav-link" href="#/dashboard" data-nav="dashboard">
+          <span data-icon="dashboard"></span><span>Dashboard</span>
+        </a>
+        <a class="nav-link" href="#/transactions" data-nav="transactions">
+          <span data-icon="transactions"></span><span>Transaksi</span>
+        </a>
+        <a class="nav-link" href="#/assets" data-nav="assets">
+          <span data-icon="assets"></span><span>Aset RT</span>
+        </a>
+        <a class="nav-link" href="#/report" data-nav="report">
+          <span data-icon="report"></span><span>Laporan</span>
+        </a>
+        <a class="nav-link" href="#/account" data-nav="account">
+          <span data-icon="account"></span><span>Akun</span>
+        </a>
+      </nav>
       <div class="sidebar-foot">
         <p>Data tersimpan di server ini.</p>
       </div>
@@ -151,15 +141,19 @@
         <span>Tanggal</span>
         <input id="tx-date" type="date" required>
       </label>
-      <label class="field">
+      <div class="field">
         <div class="field-head">
-          <span>Kategori / Pos</span>
+          <span id="tx-category-label">Kategori / Pos</span>
           <button type="button" class="btn-text" data-action="open-cat-manager">+ Kelola Pos</button>
         </div>
-        <input id="tx-category" list="tx-categories" maxlength="50" placeholder="Pilih atau ketik sendiri (contoh: Pemasukan Karnaval)" required>
-        <datalist id="tx-categories"></datalist>
+        <div id="tx-category-select" class="cat-select">
+          <span class="cat-select-icon" aria-hidden="true" data-icon="tag"></span>
+          <input id="tx-category" type="text" maxlength="50" placeholder="Pilih atau ketik pos..." autocomplete="off" aria-labelledby="tx-category-label" aria-haspopup="listbox" aria-controls="tx-category-menu" aria-expanded="false" required>
+          <span class="cat-select-chevron" aria-hidden="true" data-icon="chevronDown"></span>
+          <div id="tx-category-menu" class="cat-select-menu" role="listbox" aria-label="Daftar kategori / pos" hidden></div>
+        </div>
         <small class="hint">Bisa pilih dari daftar atau ketik pos baru langsung.</small>
-      </label>
+      </div>
       <label class="field">
         <span>Nominal (Rp)</span>
         <input id="tx-amount" type="number" min="1" step="1" inputmode="numeric" placeholder="50000" required>
@@ -188,6 +182,17 @@
         <span>Nama aset</span>
         <input id="asset-name" maxlength="100" placeholder="Contoh: Kursi rapat" required>
       </label>
+      <div class="field">
+        <span>Ikon / Emoji Barang</span>
+        <div class="asset-icon-picker-row">
+          <div id="asset-icon-preview" class="asset-icon-preview">🪑</div>
+          <div class="asset-icon-input-wrap">
+            <input id="asset-icon" maxlength="10" placeholder="Contoh: 🪑 (atau klik preset di bawah)">
+            <small class="hint">Pilih preset di bawah atau ketik/paste emoji sendiri.</small>
+          </div>
+        </div>
+        <div class="asset-icon-presets" id="asset-form-icon-presets"></div>
+      </div>
       <div class="field-row">
         <label class="field">
           <span>Kategori</span>
@@ -239,6 +244,126 @@
     </form>
   </dialog>
 
+  <dialog id="asset-loan-dialog" class="dialog dialog-loan-official" aria-labelledby="loan-dialog-title">
+    <div class="dialog-head official-form-head">
+      <div class="official-kop-mini">
+        <div class="official-kop-title">RUKUN TETANGGA 07 / RW 03</div>
+        <div class="official-kop-sub">SISTEM ADMINISTRASI KAS &amp; PENGELOLAAN INVENTARIS</div>
+      </div>
+      <button type="button" class="icon-btn" data-close aria-label="Tutup">
+        <span data-icon="close"></span>
+      </button>
+    </div>
+
+    <div class="official-kop-divider"></div>
+
+    <div class="official-title-banner">
+      <h3 id="loan-dialog-title" class="official-title-text">FORM PEMINJAMAN ALAT RUANGAN / INVENTARIS</h3>
+      <div class="official-doc-no" id="loan-doc-no-hint">Formulir Peminjaman Resmi</div>
+    </div>
+
+    <form id="loan-form" class="dialog-body official-form-body">
+      <!-- Bagian I: Data Identitas Peminjam -->
+      <div class="form-section-banner">
+        <span class="sec-dot"></span>
+        <strong>Yang bertanda tangan di bawah ini (Data Peminjam):</strong>
+      </div>
+
+      <div class="field-row">
+        <label class="field">
+          <span>Nama Lengkap Peminjam <b style="color:var(--danger)">*</b></span>
+          <input id="loan-borrower-name" maxlength="100" placeholder="Contoh: Bpk. Budi Santoso" required>
+        </label>
+        <label class="field">
+          <span>Unit / Alamat / No. HP</span>
+          <input id="loan-borrower-contact" maxlength="100" placeholder="Contoh: RT 07 / Blok B No. 4 (0812...)">
+        </label>
+      </div>
+
+      <div class="field-row">
+        <label class="field">
+          <span>Tanggal Pinjam <b style="color:var(--danger)">*</b></span>
+          <input id="loan-date" type="date" required>
+        </label>
+        <label class="field">
+          <span>Estimasi Batas Pengembalian</span>
+          <input id="loan-expected-return" type="date">
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Kegunaan / Keperluan Peminjaman</span>
+        <textarea id="loan-purpose" rows="2" maxlength="300" placeholder="Contoh: Keperluan pertemuan arisan / tahlilan warga"></textarea>
+      </label>
+
+      <!-- Bagian II: Rincian Barang yang Dipinjam -->
+      <div class="form-section-banner form-section-banner-with-action">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="sec-dot"></span>
+          <strong>Rincian Barang yang Dipinjam:</strong>
+        </div>
+        <button type="button" class="btn btn-secondary sm" id="btn-add-loan-item" style="font-size:11.5px;padding:3px 10px;">
+          + Tambah Barang Lain
+        </button>
+      </div>
+
+      <div id="loan-items-list-container" class="loan-items-list-container">
+        <!-- Rendered dynamically by renderLoanItemRows() in app.js -->
+      </div>
+
+      <div class="loan-items-summary-card" id="loan-items-summary">
+        <span id="loan-items-summary-text">Total: 0 jenis barang (0 unit)</span>
+      </div>
+
+      <!-- Bagian III: Ketentuan Resmi (Note 1-3 Sesuai Standar) -->
+      <div class="official-notes-card">
+        <div class="notes-head">Note :</div>
+        <ol class="notes-ol">
+          <li>Saat peminjaman barang, diwajibkan meminta ijin dan merawat barang inventaris RT dengan sebaik-baiknya.</li>
+          <li>Setelah pemakaian barang, harap dikembalikan tepat waktu dan lapor kembali kepada pengurus RT 07.</li>
+          <li>Apabila terjadi kerusakan atau kehilangan, peminjam bertanggung jawab memperbaiki / mengganti barang tersebut.</li>
+        </ol>
+      </div>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" data-close>Batal</button>
+        <button type="submit" class="btn btn-primary" id="loan-save">Simpan Formulir Peminjaman</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="asset-return-dialog" class="dialog" aria-labelledby="return-dialog-title">
+    <div class="dialog-head">
+      <h3 id="return-dialog-title">Pengembalian Aset</h3>
+      <button type="button" class="icon-btn" data-close aria-label="Tutup">
+        <span data-icon="close"></span>
+      </button>
+    </div>
+    <form id="return-form" class="dialog-body">
+      <div id="return-info-box" class="return-info-box"></div>
+      <label class="field">
+        <span>Tanggal dikembalikan</span>
+        <input id="return-date" type="date" required>
+      </label>
+      <label class="field">
+        <span>Kondisi saat kembali</span>
+        <select id="return-condition">
+          <option value="baik">Baik</option>
+          <option value="rusak-ringan">Rusak ringan</option>
+          <option value="rusak-berat">Rusak berat</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Catatan pengembalian <em class="muted">(opsional)</em></span>
+        <textarea id="return-note" rows="2" maxlength="300" placeholder="Catatan kelengkapan atau kondisi barang saat dikembalikan"></textarea>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" data-close>Batal</button>
+        <button type="submit" class="btn btn-primary" id="return-save">Konfirmasi Pengembalian</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="user-dialog" class="dialog" aria-labelledby="user-dialog-title">
     <div class="dialog-head">
       <h3 id="user-dialog-title">Tambah Pengguna</h3>
@@ -261,6 +386,7 @@
         <select id="user-role">
           <option value="bendahara">Bendahara</option>
           <option value="admin">Admin</option>
+          <option value="warga">Warga (Hanya Lihat)</option>
         </select>
       </label>
       <label class="field">
@@ -311,8 +437,39 @@
     </div>
   </dialog>
 
+  <dialog id="asset-icon-dialog" class="dialog" aria-labelledby="asset-icon-dialog-title">
+    <div class="dialog-head">
+      <h3 id="asset-icon-dialog-title">Ubah Ikon Barang</h3>
+      <button type="button" class="icon-btn" data-close aria-label="Tutup">
+        <span data-icon="close"></span>
+      </button>
+    </div>
+    <form id="asset-icon-form" class="dialog-body">
+      <input type="hidden" id="edit-icon-target-name">
+      <div class="icon-picker-preview-box">
+        <div id="icon-picker-preview" class="icon-picker-preview-lg">🪑</div>
+        <div>
+          <strong id="icon-picker-target-name" style="font-size: 15px; color: var(--text);">Nama Barang</strong>
+          <p class="muted" style="font-size: 12px; margin: 2px 0 0;">Pilih salah satu ikon di bawah atau ketik emoji sendiri untuk mewakili jenis barang ini.</p>
+        </div>
+      </div>
+      <label class="field">
+        <span>Emoji / Ikon Terpilih</span>
+        <input id="edit-icon-custom-input" placeholder="Ketik atau paste emoji..." maxlength="10">
+      </label>
+      <div class="field">
+        <span>Pilihan Ikon Cepat:</span>
+        <div class="icon-preset-grid" id="quick-icon-presets"></div>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" data-close>Batal</button>
+        <button type="submit" class="btn btn-primary" id="save-icon-btn">Simpan Ikon</button>
+      </div>
+    </form>
+  </dialog>
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="/js/app.js"></script>
+  <script type="module" src="/js/app.js?v=31"></script>
 </body>
 </html>

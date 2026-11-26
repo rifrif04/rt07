@@ -57,6 +57,7 @@ function emptyDb() {
     users: [],
     transactions: [],
     assets: [],
+    assetLoans: [],
     categories: {
       pos: [...DEFAULT_CATEGORIES.pos],
       income: [...DEFAULT_CATEGORIES.income],
@@ -75,6 +76,7 @@ export function loadDb() {
     if (!Array.isArray(db.users)) db.users = [];
     if (!Array.isArray(db.transactions)) db.transactions = [];
     if (!Array.isArray(db.assets)) db.assets = [];
+    if (!Array.isArray(db.assetLoans)) db.assetLoans = [];
     if (!db.meta || typeof db.meta !== 'object') db.meta = {};
 
     if (!db.categories || typeof db.categories !== 'object') {

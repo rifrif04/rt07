@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { generateLoanPdfBuffer } from './pdf.js';
 import { DEFAULT_CATEGORIES, normalizePosName, matchPosName } from './store.js';
 import {
   hashPassword,
@@ -21,8 +22,15 @@ class ApiError extends Error {
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MONTH = /^(\d{4})-(\d{2})$/;
 const USERNAME = /^[a-zA-Z0-9._-]{3,32}$/;
-const ROLES = ['admin', 'bendahara'];
+const ROLES = ['admin', 'bendahara', 'warga'];
 const CONDITIONS = ['baik', 'rusak-ringan', 'rusak-berat'];
+
+function requireWritePermission(ctx) {
+  if (!ctx.user) throw new ApiError(401, 'Sesi berakhir, silakan login kembali');
+  if (ctx.user.role === 'warga') {
+    throw new ApiError(403, 'Akun warga hanya memiliki hak akses melihat (read-only)');
+  }
+}
 
 function sendJson(res, status, data, extraHeaders = {}) {
   const body = JSON.stringify(data);
@@ -175,16 +183,131 @@ function lastMonths(month, count = 6) {
   return result;
 }
 
+export function getBorrowedByAssetId(loans, excludeLoanId = null) {
+  const map = new Map();
+  for (const loan of (loans || [])) {
+    if (loan.status === 'dipinjam' && (!excludeLoanId || loan.id !== excludeLoanId)) {
+      if (Array.isArray(loan.items) && loan.items.length > 0) {
+        for (const item of loan.items) {
+          if (item && item.assetId) {
+            const q = Number(item.quantity) || 0;
+            map.set(item.assetId, (map.get(item.assetId) || 0) + q);
+          }
+        }
+      } else if (loan.assetId) {
+        const q = Number(loan.quantity) || 0;
+        map.set(loan.assetId, (map.get(loan.assetId) || 0) + q);
+      }
+    }
+  }
+  return map;
+}
+
 function assetSummary(db) {
-  const summary = { items: db.assets.length, units: 0, value: 0, baik: 0, rusakRingan: 0, rusakBerat: 0 };
+  const loans = Array.isArray(db.assetLoans) ? db.assetLoans : [];
+  const borrowedByAssetId = getBorrowedByAssetId(loans);
+  let totalBorrowedUnits = 0;
+  let activeLoansCount = 0;
+
+  for (const loan of loans) {
+    if (loan.status === 'dipinjam') {
+      activeLoansCount++;
+      if (Array.isArray(loan.items) && loan.items.length > 0) {
+        totalBorrowedUnits += loan.items.reduce((s, it) => s + (Number(it.quantity) || 0), 0);
+      } else {
+        totalBorrowedUnits += Number(loan.quantity) || 0;
+      }
+    }
+  }
+
+  const summary = {
+    items: db.assets.length,
+    units: 0,
+    value: 0,
+    baik: 0,
+    rusakRingan: 0,
+    rusakBerat: 0,
+    diTempat: 0,
+    dipinjam: totalBorrowedUnits,
+    activeLoansCount,
+    totalLoansCount: loans.length,
+    byItem: [],
+    byCategory: [],
+  };
+
+  const itemMap = new Map();
+  const catMap = new Map();
+
   for (const asset of db.assets) {
     const qty = Number(asset.quantity) || 0;
+    const val = Number(asset.value) || 0;
+    const borrowedQty = borrowedByAssetId.get(asset.id) || 0;
+    const availableQty = Math.max(0, qty - borrowedQty);
+
     summary.units += qty;
-    summary.value += Number(asset.value) || 0;
+    summary.value += val;
     if (asset.condition === 'baik') summary.baik += qty;
     else if (asset.condition === 'rusak-ringan') summary.rusakRingan += qty;
     else if (asset.condition === 'rusak-berat') summary.rusakBerat += qty;
+
+    const rawName = String(asset.name || '').trim();
+    if (rawName) {
+      const key = rawName.toLowerCase();
+      if (!itemMap.has(key)) {
+        itemMap.set(key, {
+          name: rawName,
+          category: asset.category || 'Lainnya',
+          icon: asset.icon || '',
+          quantity: 0,
+          diTempat: 0,
+          dipinjam: 0,
+          value: 0,
+          baik: 0,
+          rusakRingan: 0,
+          rusakBerat: 0,
+          locations: new Set(),
+        });
+      }
+      const itemGroup = itemMap.get(key);
+      if (asset.icon && !itemGroup.icon) {
+        itemGroup.icon = asset.icon;
+      }
+      itemGroup.quantity += qty;
+      itemGroup.diTempat += availableQty;
+      itemGroup.dipinjam += borrowedQty;
+      itemGroup.value += val;
+      if (asset.condition === 'baik') itemGroup.baik += qty;
+      else if (asset.condition === 'rusak-ringan') itemGroup.rusakRingan += qty;
+      else if (asset.condition === 'rusak-berat') itemGroup.rusakBerat += qty;
+      if (asset.location && String(asset.location).trim()) {
+        itemGroup.locations.add(String(asset.location).trim());
+      }
+    }
+
+    const cat = asset.category || 'Lainnya';
+    if (!catMap.has(cat)) {
+      catMap.set(cat, { category: cat, items: 0, units: 0, diTempat: 0, dipinjam: 0, value: 0 });
+    }
+    const catGroup = catMap.get(cat);
+    catGroup.items += 1;
+    catGroup.units += qty;
+    catGroup.diTempat += availableQty;
+    catGroup.dipinjam += borrowedQty;
+    catGroup.value += val;
   }
+
+  summary.diTempat = Math.max(0, summary.units - totalBorrowedUnits);
+
+  summary.byItem = Array.from(itemMap.values())
+    .map((item) => ({
+      ...item,
+      locations: Array.from(item.locations).join(', '),
+    }))
+    .sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name));
+
+  summary.byCategory = Array.from(catMap.values())
+    .sort((a, b) => b.units - a.units);
+
   return summary;
 }
 
@@ -303,6 +426,7 @@ function handleListCategories(ctx) {
 }
 
 async function handleCreateCategory(ctx) {
+  requireWritePermission(ctx);
   const body = await readJson(ctx.req);
   const type = body.type === 'expense' ? 'expense' : body.type === 'pos' ? 'pos' : 'income';
   const name = text(body.name, 'Nama pos / kategori', { min: 2, max: 50 });
@@ -327,6 +451,7 @@ async function handleCreateCategory(ctx) {
 }
 
 async function handleUpdateCategory(ctx) {
+  requireWritePermission(ctx);
   const body = await readJson(ctx.req);
   const type = body.type === 'expense' ? 'expense' : body.type === 'pos' ? 'pos' : 'income';
   const oldName = text(body.oldName, 'Nama lama', { min: 1, max: 50 });
@@ -369,6 +494,7 @@ async function handleUpdateCategory(ctx) {
 }
 
 async function handleDeleteCategory(ctx) {
+  requireWritePermission(ctx);
   const body = await readJson(ctx.req);
   const type = body.type === 'expense' ? 'expense' : body.type === 'pos' ? 'pos' : 'income';
   const name = text(body.name, 'Nama pos / kategori', { min: 1, max: 50 });
@@ -457,7 +583,8 @@ function handleDashboard(ctx) {
         monthExpense: monthPosTx.filter((t) => t.type === 'expense').length,
       },
       chart: chartMonths,
-      recent: filterTransactions(db, { category }).slice(0, 20),
+      recent: filterTransactions(db, { category }).slice(0, 3),
+      assets: assetSummary(db),
       posList,
     });
   }
@@ -476,7 +603,7 @@ function handleDashboard(ctx) {
     monthTotals: totals(monthList),
     monthCount: monthList.length,
     chart: chartMonths,
-    recent: filterTransactions(db, {}).slice(0, 6),
+    recent: filterTransactions(db, {}).slice(0, 3),
     assets: assetSummary(db),
     posBreakdown: posList,
     posList,
@@ -497,6 +624,7 @@ function handleListTransactions(ctx) {
 }
 
 async function handleCreateTransaction(ctx) {
+  requireWritePermission(ctx);
   const { req, res, db, save, user } = ctx;
   const body = await readJson(req);
   const type = body.type === 'income' || body.type === 'expense' ? body.type : null;
@@ -532,6 +660,7 @@ async function handleCreateTransaction(ctx) {
 }
 
 async function handleUpdateTransaction(ctx, id) {
+  requireWritePermission(ctx);
   const { req, res, db, save } = ctx;
   const transaction = db.transactions.find((t) => t.id === id);
   if (!transaction) throw new ApiError(404, 'Transaksi tidak ditemukan');
@@ -561,6 +690,7 @@ async function handleUpdateTransaction(ctx, id) {
 }
 
 function handleDeleteTransaction(ctx, id) {
+  requireWritePermission(ctx);
   const { db, save } = ctx;
   const index = db.transactions.findIndex((t) => t.id === id);
   if (index === -1) throw new ApiError(404, 'Transaksi tidak ditemukan');
@@ -573,7 +703,18 @@ function handleListAssets(ctx) {
   const { db, url } = ctx;
   const q = text(url.searchParams.get('q'), 'Pencarian', { required: false, max: 100 }).toLowerCase();
   const category = text(url.searchParams.get('category'), 'Kategori', { required: false, max: 50 });
-  let list = db.assets;
+  const loans = Array.isArray(db.assetLoans) ? db.assetLoans : [];
+  const borrowedByAssetId = getBorrowedByAssetId(loans);
+
+  let list = db.assets.map((a) => {
+    const borrowedQty = borrowedByAssetId.get(a.id) || 0;
+    return {
+      ...a,
+      borrowedQty,
+      availableQty: Math.max(0, (Number(a.quantity) || 0) - borrowedQty),
+    };
+  });
+
   if (category) list = list.filter((a) => a.category === category);
   if (q) {
     list = list.filter((a) =>
@@ -588,6 +729,7 @@ function assetPayload(body) {
   return {
     name: text(body.name, 'Nama aset', { max: 100 }),
     category: text(body.category, 'Kategori', { max: 50 }),
+    icon: text(body.icon, 'Ikon / Emoji aset', { required: false, max: 50 }) || '',
     quantity: intValue(body.quantity, 'Jumlah', { min: 1, max: 100000 }),
     condition: CONDITIONS.includes(body.condition) ? body.condition : 'baik',
     acquiredDate: dateValue(body.acquiredDate, 'Tanggal perolehan', { required: false }),
@@ -598,6 +740,7 @@ function assetPayload(body) {
 }
 
 async function handleCreateAsset(ctx) {
+  requireWritePermission(ctx);
   const { req, res, db, save, user } = ctx;
   const body = await readJson(req);
   const now = new Date().toISOString();
@@ -614,22 +757,61 @@ async function handleCreateAsset(ctx) {
 }
 
 async function handleUpdateAsset(ctx, id) {
+  requireWritePermission(ctx);
   const { req, res, db, save } = ctx;
   const asset = db.assets.find((a) => a.id === id);
   if (!asset) throw new ApiError(404, 'Aset tidak ditemukan');
   const body = await readJson(req);
-  Object.assign(asset, assetPayload(body), { updatedAt: new Date().toISOString() });
+  const payload = assetPayload(body);
+
+  const loans = Array.isArray(db.assetLoans) ? db.assetLoans : [];
+  const borrowedMap = getBorrowedByAssetId(loans);
+  const currentlyBorrowed = borrowedMap.get(id) || 0;
+  if (payload.quantity < currentlyBorrowed) {
+    throw new ApiError(
+      400,
+      `Jumlah aset tidak boleh kurang dari unit yang sedang dipinjam (${currentlyBorrowed} unit sedang dipinjam)`
+    );
+  }
+
+  Object.assign(asset, payload, { updatedAt: new Date().toISOString() });
   save();
   sendJson(res, 200, { asset });
 }
 
 function handleDeleteAsset(ctx, id) {
+  requireWritePermission(ctx);
   const { db, save } = ctx;
   const index = db.assets.findIndex((a) => a.id === id);
   if (index === -1) throw new ApiError(404, 'Aset tidak ditemukan');
+  const loans = Array.isArray(db.assetLoans) ? db.assetLoans : [];
+  const borrowedMap = getBorrowedByAssetId(loans);
+  if ((borrowedMap.get(id) || 0) > 0) {
+    throw new ApiError(400, 'Aset tidak dapat dihapus karena masih ada unit yang sedang dipinjam warga');
+  }
   db.assets.splice(index, 1);
   save();
   sendJson(ctx.res, 200, { ok: true });
+}
+
+async function handleUpdateAssetIcon(ctx) {
+  requireWritePermission(ctx);
+  const { req, res, db, save } = ctx;
+  const body = await readJson(req);
+  const name = text(body.name, 'Nama barang', { max: 100 }).trim();
+  const iconVal = text(body.icon, 'Ikon barang', { required: false, max: 50 }).trim();
+  if (!name) throw new ApiError(400, 'Nama barang wajib diisi');
+
+  let updatedCount = 0;
+  for (const asset of db.assets) {
+    if (String(asset.name || '').trim().toLowerCase() === name.toLowerCase()) {
+      asset.icon = iconVal;
+      asset.updatedAt = new Date().toISOString();
+      updatedCount++;
+    }
+  }
+  save();
+  sendJson(res, 200, { ok: true, name, icon: iconVal, updatedCount });
 }
 
 function handleReport(ctx) {
@@ -680,21 +862,380 @@ function handleExportTransactions(ctx) {
 
 function handleExportAssets(ctx) {
   const { db } = ctx;
+  const loans = Array.isArray(db.assetLoans) ? db.assetLoans : [];
+  const borrowedByAssetId = getBorrowedByAssetId(loans);
+
   const list = db.assets.slice().sort((a, b) => a.name.localeCompare(b.name));
   const rows = [
-    ['Nama Aset', 'Kategori', 'Jumlah', 'Kondisi', 'Tanggal Perolehan', 'Nilai (Rp)', 'Lokasi', 'Catatan'],
-    ...list.map((a) => [
-      a.name,
-      a.category,
-      a.quantity,
-      conditionLabel(a.condition),
-      a.acquiredDate,
-      a.value,
-      a.location,
-      a.note,
-    ]),
+    [
+      'Nama Aset',
+      'Kategori',
+      'Total Unit',
+      'Ada di Tempat',
+      'Sedang Dipinjam',
+      'Kondisi',
+      'Tanggal Perolehan',
+      'Nilai (Rp)',
+      'Lokasi',
+      'Catatan',
+    ],
+    ...list.map((a) => {
+      const borrowed = borrowedByAssetId.get(a.id) || 0;
+      const diTempat = Math.max(0, (Number(a.quantity) || 0) - borrowed);
+      return [
+        a.name,
+        a.category,
+        a.quantity,
+        diTempat,
+        borrowed,
+        conditionLabel(a.condition),
+        a.acquiredDate,
+        a.value,
+        a.location,
+        a.note,
+      ];
+    }),
   ];
   sendCsv(ctx.res, 'kas-rt-aset.csv', rows);
+}
+
+function handleListAssetLoans(ctx) {
+  const { db, url } = ctx;
+  const status = url.searchParams.get('status') || 'all';
+  const assetId = url.searchParams.get('assetId');
+  const q = text(url.searchParams.get('q'), 'Pencarian', { required: false, max: 100 }).toLowerCase();
+
+  let loans = Array.isArray(db.assetLoans) ? db.assetLoans : [];
+  if (status === 'dipinjam' || status === 'dikembalikan') {
+    loans = loans.filter((l) => l.status === status);
+  }
+  if (assetId) {
+    loans = loans.filter((l) => {
+      if (Array.isArray(l.items) && l.items.length > 0) {
+        return l.items.some((it) => it.assetId === assetId);
+      }
+      return l.assetId === assetId;
+    });
+  }
+  if (q) {
+    loans = loans.filter((l) => {
+      const itemsText = Array.isArray(l.items) ? l.items.map((it) => it.assetName).join(' ') : '';
+      return `${l.assetName || ''} ${itemsText} ${l.borrowerName || ''} ${l.borrowerContact || ''} ${l.purpose || ''} ${l.returnNote || ''}`
+        .toLowerCase()
+        .includes(q);
+    });
+  }
+
+  loans = loans.slice().sort((a, b) => {
+    if (a.status !== b.status) {
+      return a.status === 'dipinjam' ? -1 : 1;
+    }
+    return (
+      String(b.loanDate || '').localeCompare(String(a.loanDate || '')) ||
+      String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+    );
+  });
+
+  sendJson(ctx.res, 200, {
+    loans,
+    summary: assetSummary(db),
+  });
+}
+
+async function handleCreateAssetLoan(ctx) {
+  requireWritePermission(ctx);
+  const { req, res, db, save, user } = ctx;
+  const body = await readJson(req);
+
+  const borrowerName = text(body.borrowerName, 'Nama peminjam', { min: 2, max: 100 });
+  const borrowerContact = text(body.borrowerContact, 'Kontak / Alamat', { required: false, max: 100 });
+  const loanDate = dateValue(body.loanDate, 'Tanggal pinjam');
+  const expectedReturnDate = dateValue(body.expectedReturnDate, 'Estimasi tanggal kembali', { required: false });
+  const purpose = text(body.purpose, 'Keperluan peminjaman', { required: false, max: 300 });
+
+  if (expectedReturnDate && expectedReturnDate < loanDate) {
+    throw new ApiError(400, 'Estimasi tanggal kembali tidak boleh sebelum tanggal pinjam');
+  }
+
+  let rawItems = [];
+  if (Array.isArray(body.items) && body.items.length > 0) {
+    rawItems = body.items;
+  } else if (body.assetId) {
+    rawItems = [{ assetId: body.assetId, quantity: body.quantity }];
+  } else {
+    throw new ApiError(400, 'Pilih minimal satu barang yang dipinjam');
+  }
+
+  // Deduplicate and aggregate quantities by assetId
+  const itemMap = new Map();
+  for (const it of rawItems) {
+    const aid = text(it.assetId, 'ID Aset');
+    const q = intValue(it.quantity, 'Jumlah dipinjam', { min: 1, max: 10000 });
+    itemMap.set(aid, (itemMap.get(aid) || 0) + q);
+  }
+
+  const loans = Array.isArray(db.assetLoans) ? db.assetLoans : [];
+  const borrowedMap = getBorrowedByAssetId(loans);
+
+  const validatedItems = [];
+  let totalQuantity = 0;
+
+  for (const [aid, qty] of itemMap.entries()) {
+    const asset = db.assets.find((a) => a.id === aid);
+    if (!asset) {
+      throw new ApiError(404, `Aset dengan ID "${aid}" tidak ditemukan`);
+    }
+    const currentlyBorrowed = borrowedMap.get(aid) || 0;
+    const availableQty = Math.max(0, (Number(asset.quantity) || 0) - currentlyBorrowed);
+    if (qty > availableQty) {
+      throw new ApiError(
+        400,
+        `Unit "${asset.name}" yang ada di tempat hanya tersisa ${availableQty} unit. Tidak mencukupi untuk meminjam ${qty} unit.`
+      );
+    }
+    validatedItems.push({
+      assetId: asset.id,
+      assetName: asset.name,
+      quantity: qty,
+    });
+    totalQuantity += qty;
+  }
+
+  const assetNameSummary = validatedItems.length === 1
+    ? validatedItems[0].assetName
+    : validatedItems.map((i) => `${i.assetName} (${i.quantity})`).join(', ');
+
+  const now = new Date().toISOString();
+  const loan = {
+    id: crypto.randomUUID(),
+    items: validatedItems,
+    assetId: validatedItems[0].assetId,
+    assetName: assetNameSummary,
+    quantity: totalQuantity,
+    borrowerName,
+    borrowerContact,
+    loanDate,
+    expectedReturnDate: expectedReturnDate || '',
+    returnDate: '',
+    status: 'dipinjam',
+    purpose,
+    returnCondition: '',
+    returnNote: '',
+    createdBy: user.username,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  if (!Array.isArray(db.assetLoans)) db.assetLoans = [];
+  db.assetLoans.push(loan);
+  save();
+
+  sendJson(res, 201, { loan, summary: assetSummary(db) });
+}
+
+async function handleReturnAssetLoan(ctx, id) {
+  requireWritePermission(ctx);
+  const { req, res, db, save } = ctx;
+  const loans = Array.isArray(db.assetLoans) ? db.assetLoans : [];
+  const loan = loans.find((l) => l.id === id);
+  if (!loan) throw new ApiError(404, 'Data peminjaman tidak ditemukan');
+
+  if (loan.status === 'dikembalikan') {
+    throw new ApiError(400, 'Barang pinjaman ini sudah berstatus dikembalikan');
+  }
+
+  const body = await readJson(req);
+  const returnDate =
+    dateValue(body.returnDate, 'Tanggal kembali', { required: false }) ||
+    new Date().toISOString().slice(0, 10);
+  const returnCondition = CONDITIONS.includes(body.returnCondition) ? body.returnCondition : 'baik';
+  const returnNote = text(body.returnNote, 'Catatan pengembalian', { required: false, max: 300 });
+
+  loan.status = 'dikembalikan';
+  loan.returnDate = returnDate;
+  loan.returnCondition = returnCondition;
+  loan.returnNote = returnNote;
+  loan.updatedAt = new Date().toISOString();
+
+  save();
+  sendJson(res, 200, { loan, summary: assetSummary(db) });
+}
+
+async function handleUpdateAssetLoan(ctx, id) {
+  requireWritePermission(ctx);
+  const { req, res, db, save } = ctx;
+  const loans = Array.isArray(db.assetLoans) ? db.assetLoans : [];
+  const loan = loans.find((l) => l.id === id);
+  if (!loan) throw new ApiError(404, 'Data peminjaman tidak ditemukan');
+
+  const body = await readJson(req);
+  const borrowerName = text(body.borrowerName, 'Nama peminjam', { min: 2, max: 100 });
+  const borrowerContact = text(body.borrowerContact, 'Kontak / Alamat', { required: false, max: 100 });
+  const loanDate = dateValue(body.loanDate, 'Tanggal pinjam');
+  const expectedReturnDate = dateValue(body.expectedReturnDate, 'Estimasi tanggal kembali', { required: false });
+  const purpose = text(body.purpose, 'Keperluan', { required: false, max: 300 });
+
+  let rawItems = [];
+  if (Array.isArray(body.items) && body.items.length > 0) {
+    rawItems = body.items;
+  } else if (body.assetId) {
+    rawItems = [{ assetId: body.assetId, quantity: body.quantity }];
+  } else if (Array.isArray(loan.items) && loan.items.length > 0) {
+    rawItems = loan.items;
+  } else {
+    rawItems = [{ assetId: loan.assetId, quantity: loan.quantity }];
+  }
+
+  const itemMap = new Map();
+  for (const it of rawItems) {
+    const aid = text(it.assetId, 'ID Aset');
+    const q = intValue(it.quantity, 'Jumlah dipinjam', { min: 1, max: 10000 });
+    itemMap.set(aid, (itemMap.get(aid) || 0) + q);
+  }
+
+  const borrowedMap = getBorrowedByAssetId(loans, id);
+  const validatedItems = [];
+  let totalQuantity = 0;
+
+  for (const [aid, qty] of itemMap.entries()) {
+    const asset = db.assets.find((a) => a.id === aid);
+    if (!asset) {
+      throw new ApiError(404, `Aset dengan ID "${aid}" tidak ditemukan`);
+    }
+    if (loan.status === 'dipinjam') {
+      const currentlyBorrowed = borrowedMap.get(aid) || 0;
+      const availableQty = Math.max(0, (Number(asset.quantity) || 0) - currentlyBorrowed);
+      if (qty > availableQty) {
+        throw new ApiError(
+          400,
+          `Stok "${asset.name}" yang ada di tempat hanya tersisa ${availableQty} unit. Tidak mencukupi untuk meminjam ${qty} unit.`
+        );
+      }
+    }
+    validatedItems.push({
+      assetId: asset.id,
+      assetName: asset.name,
+      quantity: qty,
+    });
+    totalQuantity += qty;
+  }
+
+  const assetNameSummary = validatedItems.length === 1
+    ? validatedItems[0].assetName
+    : validatedItems.map((i) => `${i.assetName} (${i.quantity})`).join(', ');
+
+  loan.items = validatedItems;
+  loan.assetId = validatedItems[0].assetId;
+  loan.assetName = assetNameSummary;
+  loan.quantity = totalQuantity;
+  loan.borrowerName = borrowerName;
+  loan.borrowerContact = borrowerContact;
+  loan.loanDate = loanDate;
+  loan.expectedReturnDate = expectedReturnDate || '';
+  loan.purpose = purpose;
+  loan.updatedAt = new Date().toISOString();
+
+  save();
+  sendJson(res, 200, { loan, summary: assetSummary(db) });
+}
+
+function handleDeleteAssetLoan(ctx, id) {
+  requireWritePermission(ctx);
+  const { db, save } = ctx;
+  const loans = Array.isArray(db.assetLoans) ? db.assetLoans : [];
+  const index = loans.findIndex((l) => l.id === id);
+  if (index === -1) throw new ApiError(404, 'Data peminjaman tidak ditemukan');
+
+  loans.splice(index, 1);
+  save();
+  sendJson(ctx.res, 200, { ok: true, summary: assetSummary(db) });
+}
+
+function handleExportAssetLoans(ctx) {
+  const { db } = ctx;
+  const loans = Array.isArray(db.assetLoans) ? db.assetLoans.slice() : [];
+  loans.sort((a, b) => String(b.loanDate || '').localeCompare(String(a.loanDate || '')));
+
+  const rows = [
+    [
+      'Status',
+      'Tanggal Pinjam',
+      'Daftar Barang',
+      'Total Unit',
+      'Nama Peminjam',
+      'Kontak / Alamat',
+      'Estimasi Kembali',
+      'Tanggal Kembali',
+      'Kondisi Kembali',
+      'Keperluan',
+      'Catatan Pengembalian',
+      'Petugas',
+    ],
+    ...loans.map((l) => {
+      const itemsText = Array.isArray(l.items) && l.items.length > 0
+        ? l.items.map((i) => `${i.assetName} (${i.quantity} unit)`).join('; ')
+        : `${l.assetName || ''} (${l.quantity} unit)`;
+      return [
+        l.status === 'dipinjam' ? 'Sedang Dipinjam' : 'Sudah Dikembalikan',
+        l.loanDate,
+        itemsText,
+        l.quantity,
+        l.borrowerName,
+        l.borrowerContact,
+        l.expectedReturnDate || '—',
+        l.returnDate || '—',
+        l.returnCondition ? conditionLabel(l.returnCondition) : '—',
+        l.purpose || '—',
+        l.returnNote || '—',
+        l.createdBy || '—',
+      ];
+    }),
+  ];
+  sendCsv(ctx.res, 'kas-rt-riwayat-peminjaman.csv', rows);
+}
+
+function sendPdf(res, filename, buffer) {
+  res.removeHeader('Content-Security-Policy');
+  res.removeHeader('X-Frame-Options');
+  res.writeHead(200, {
+    'Content-Type': 'application/pdf',
+    'Content-Disposition': `inline; filename="${filename}"`,
+    'Cache-Control': 'no-store',
+    'Content-Length': buffer.length,
+  });
+  res.end(buffer);
+}
+
+async function handleLoanPdf(ctx, loanId) {
+  if (!ctx.user) throw new ApiError(401, 'Silakan login terlebih dahulu');
+  const { db } = ctx;
+  const loan = (db.assetLoans || []).find((l) => l.id === loanId);
+  if (!loan) throw new ApiError(404, 'Data peminjaman tidak ditemukan');
+
+  const assetMap = new Map((db.assets || []).map((a) => [a.id, a.name]));
+  const items = Array.isArray(loan.items) && loan.items.length > 0
+    ? loan.items.map((it) => ({
+        ...it,
+        assetName: assetMap.get(it.assetId) || it.assetName || 'Barang Inventaris',
+      }))
+    : [
+        {
+          assetId: loan.assetId,
+          assetName: assetMap.get(loan.assetId) || loan.assetName || 'Barang Inventaris',
+          quantity: loan.quantity,
+        },
+      ];
+
+  const loanData = {
+    ...loan,
+    items,
+    assetName: loan.assetName || items.map((i) => `${i.assetName} (${i.quantity})`).join(', '),
+  };
+
+  const buffer = await generateLoanPdfBuffer(loanData, ctx.rtName || 'RT 07');
+  const safeName = (loan.borrowerName || 'peminjaman').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const filename = `Form_Peminjaman_${safeName}.pdf`;
+  sendPdf(ctx.res, filename, buffer);
 }
 
 function handleListUsers(ctx) {
@@ -839,6 +1380,7 @@ export async function handleApi(ctx) {
 
     if (pathname === '/api/assets' && method === 'GET') return handleListAssets(ctx);
     if (pathname === '/api/assets' && method === 'POST') return await handleCreateAsset(ctx);
+    if (pathname === '/api/assets/icon' && method === 'POST') return await handleUpdateAssetIcon(ctx);
 
     match = /^\/api\/assets\/([^/]+)$/.exec(pathname);
     if (match) {
@@ -846,9 +1388,25 @@ export async function handleApi(ctx) {
       if (method === 'DELETE') return handleDeleteAsset(ctx, match[1]);
     }
 
+    if (pathname === '/api/asset-loans' && method === 'GET') return handleListAssetLoans(ctx);
+    if (pathname === '/api/asset-loans' && method === 'POST') return await handleCreateAssetLoan(ctx);
+
+    match = /^\/api\/asset-loans\/([^/]+)\/return$/.exec(pathname);
+    if (match && method === 'POST') return await handleReturnAssetLoan(ctx, match[1]);
+
+    match = /^\/api\/asset-loans\/([^/]+)\/pdf$/.exec(pathname);
+    if (match && method === 'GET') return await handleLoanPdf(ctx, match[1]);
+
+    match = /^\/api\/asset-loans\/([^/]+)$/.exec(pathname);
+    if (match) {
+      if (method === 'PUT') return await handleUpdateAssetLoan(ctx, match[1]);
+      if (method === 'DELETE') return handleDeleteAssetLoan(ctx, match[1]);
+    }
+
     if (pathname === '/api/report' && method === 'GET') return handleReport(ctx);
     if (pathname === '/api/export/transactions.csv' && method === 'GET') return handleExportTransactions(ctx);
     if (pathname === '/api/export/assets.csv' && method === 'GET') return handleExportAssets(ctx);
+    if (pathname === '/api/export/asset-loans.csv' && method === 'GET') return handleExportAssetLoans(ctx);
 
     if (pathname === '/api/users' && method === 'GET') return handleListUsers(ctx);
     if (pathname === '/api/users' && method === 'POST') return await handleCreateUser(ctx);

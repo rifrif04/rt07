@@ -109,7 +109,7 @@ public class MainActivity extends Activity {
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(false);
         settings.setMediaPlaybackRequiresUserGesture(true);
-        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         webView.setBackgroundColor(Color.parseColor("#f3f6f5"));
 
@@ -190,6 +190,7 @@ public class MainActivity extends Activity {
         if (id == R.id.action_reload) {
             hideError();
             if (serverUrl != null) {
+                webView.clearCache(true);
                 webView.reload();
             } else {
                 showServerDialog(true);
@@ -207,12 +208,26 @@ public class MainActivity extends Activity {
         return false;
     }
 
-    private void loadServer(String url) {
-        serverUrl = url;
-        hideError();
-        progress.setVisibility(View.VISIBLE);
-        webView.loadUrl(url.endsWith("/") ? url : url + "/");
-    }
+
+        private static final String FIXED_URL = "https://rtpusat.syarif.fun";
+
+        private void loadServer(String url) {
+            url = FIXED_URL;
+            serverUrl = url;
+            hideError();
+            progress.setVisibility(View.VISIBLE);
+            webView.clearCache(true);
+            webView.loadUrl(url.endsWith("/") ? url : url + "/");
+        }
+
+//    private void loadServer(String url) {
+//        url = FIXED_URL;
+//        serverUrl = url;
+//        hideError();
+//        progress.setVisibility(View.VISIBLE);
+//        webView.clearCache(true);
+//        webView.loadUrl(url.endsWith("/") ? url : url + "/");
+//    }
 
     private void showError(String detail) {
         progress.setVisibility(View.GONE);
@@ -463,10 +478,36 @@ public class MainActivity extends Activity {
         super.onDestroy();
     }
 
+    public void openPdfFromUrl(String pdfUrl) {
+        if (pdfUrl == null || pdfUrl.trim().isEmpty()) return;
+        String fullUrl = pdfUrl;
+        if (!pdfUrl.startsWith("http://") && !pdfUrl.startsWith("https://")) {
+            String base = webView != null ? webView.getUrl() : serverUrl;
+            if (base != null) {
+                try {
+                    java.net.URL baseUrl = new java.net.URL(base);
+                    fullUrl = new java.net.URL(baseUrl, pdfUrl).toString();
+                } catch (Exception ignored) {}
+            }
+        }
+        PendingDownload download = new PendingDownload(
+                fullUrl,
+                webView != null ? webView.getSettings().getUserAgentString() : null,
+                "inline; filename=\"Form_Peminjaman.pdf\"",
+                "application/pdf"
+        );
+        enqueueDownload(download);
+    }
+
     private class AndroidBridge {
         @JavascriptInterface
         public void printPage() {
             runOnUiThread(MainActivity.this::printCurrentPage);
+        }
+
+        @JavascriptInterface
+        public void openPdf(String url) {
+            runOnUiThread(() -> openPdfFromUrl(url));
         }
     }
 

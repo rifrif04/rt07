@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kas-rt-v10';
+const CACHE_NAME = 'kas-rt-v31';
 const APP_SHELL = [
   '/',
   '/index.html',

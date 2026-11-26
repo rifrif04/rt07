@@ -56,6 +56,22 @@ export function ensureDefaultAdmin(db) {
   });
 }
 
+export function ensureDefaultWarga(db) {
+  if (db.users.some((u) => u.username === 'warga' || u.role === 'warga')) return;
+  const { salt, hash } = hashPassword('warga123');
+  db.users.push({
+    id: crypto.randomUUID(),
+    username: 'warga',
+    name: 'Warga RT 07',
+    role: 'warga',
+    salt,
+    hash,
+    tokenVersion: 0,
+    mustChangePassword: false,
+    createdAt: new Date().toISOString(),
+  });
+}
+
 function signSession(userId, tokenVersion) {
   const payload = Buffer.from(
     JSON.stringify({ uid: userId, tv: tokenVersion || 0, exp: Date.now() + SESSION_MAX_AGE * 1000 })
